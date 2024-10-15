@@ -1,0 +1,13 @@
+[package]
+name = "wevscan"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+alloy = "0.4.2"
+mongodb = "3.1.0"
+regex = "1.11.0"
+reqwest = "0.12.8"
+serde = "1.0.210"
+serde_yaml = "0.9.34"
+tokio = "1.40.0"
