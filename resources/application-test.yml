@@ -1,0 +1,9 @@
+network:
+  url: ${BLOCKCHAIN_NODE_URL:http://localhost:/eth}
+  chain_id: ${CHAIN_ID:1}
+
+filters:
+  - contract_address: ${CONTRACT_ADDRESS:0x0}
+    event_signature: "TransferExecuted(address,address)"
+  - contract_address: ${CONTRACT_ADDRESS:0x0}
+    event_signature: "Approval(address,address)"
