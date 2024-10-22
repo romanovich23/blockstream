@@ -1,24 +1,6 @@
+use crate::blockchain::configuration::Configuration;
 use regex::Regex;
-use serde::Deserialize;
 use std::{env, fs};
-
-#[derive(Debug, Deserialize)]
-pub struct Filter {
-    pub contract_address: String,
-    pub event_signature: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Network {
-    pub url: String,
-    pub chain_id: u64,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Config {
-    pub network: Network,
-    pub filters: Vec<Filter>,
-}
 
 fn substitute_env_variables(contents: &str) -> String {
     let re = Regex::new(r"\$\{([^:}]+):?([^}]*)\}").unwrap();
@@ -30,13 +12,13 @@ fn substitute_env_variables(contents: &str) -> String {
     .to_string()
 }
 
-fn load_config_by_filename(filename: &str) -> Config {
+fn load_config_by_filename(filename: &str) -> Configuration {
     let contents = fs::read_to_string(filename).expect("Error reading the file");
     let substituted = substitute_env_variables(&contents);
     serde_yaml::from_str(&substituted).expect("Error parsing YAML")
 }
 
-pub fn load_config(env: Option<String>) -> Config {
+pub fn load_config(env: Option<String>) -> Configuration {
     let filename: String = match env {
         Some(env) => format!("resources/application-{}.yml", env),
         None => "resources/application.yml".to_string(),
