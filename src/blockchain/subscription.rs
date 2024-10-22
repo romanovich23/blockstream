@@ -59,7 +59,7 @@ pub async fn subscribe_to_blocks(
 pub async fn process_transaction_logs<F>(
     provider: RootProvider<PubSubFrontend>,
     block: Block,
-    subscriptions: &Vec<EventSubscription>,
+    subscriptions: &[EventSubscription],
     process_event_log: F,
 ) -> Result<(), TransportError>
 where
@@ -87,7 +87,7 @@ where
                                 if log.topics().contains(&event.hash) {
                                     println!("Event found in transaction {}", transaction.hash);
                                     // Call the closure to process the event data
-                                    process_event_log(&event, log); // Adjust based on actual log type
+                                    process_event_log(event, log); // Adjust based on actual log type
                                 }
                             }
                         }
