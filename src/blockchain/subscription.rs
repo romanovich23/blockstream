@@ -6,7 +6,7 @@ use alloy::{
 };
 use futures_util::{stream, StreamExt};
 
-use super::configuration::{Event, EventSubscription};
+use super::configuration::{EventFilter, EventSubscription};
 
 pub async fn subscribe_to_blocks(
     provider: RootProvider<BoxTransport>,
@@ -63,7 +63,7 @@ pub async fn process_transaction_logs<F>(
     process_event_log: F,
 ) -> Result<(), TransportError>
 where
-    F: Fn(&Event, &Log),
+    F: Fn(&EventFilter, &Log),
 {
     // Iterate over the transactions in the block
     for transaction in block.transactions.into_transactions() {

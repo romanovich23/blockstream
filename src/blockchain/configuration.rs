@@ -96,11 +96,11 @@ impl Network {
 #[derive(Debug)]
 pub struct EventSubscription {
     pub contract_address: Address,
-    pub events: Vec<Event>,
+    pub events: Vec<EventFilter>,
 }
 
 impl EventSubscription {
-    pub fn new(contract_address: Address, events: Vec<Event>) -> Self {
+    pub fn new(contract_address: Address, events: Vec<EventFilter>) -> Self {
         Self {
             contract_address,
             events,
@@ -176,15 +176,118 @@ impl<'de> Deserialize<'de> for EventSubscription {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum ParamType {
+    Address,
+    UInt(usize),
+    Int(usize),
+    Bool,
+    String,
+    Bytes,
+    FixedBytes(usize),
+    Array(Box<ParamType>),
+    Struct(Vec<ParamType>),
+}
+
+impl FromStr for ParamType {
+    type Err = (); // O define un tipo de error más específico
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "address" => Ok(ParamType::Address),
+            "uint256" => Ok(ParamType::UInt(256)),
+            "uint128" => Ok(ParamType::UInt(128)),
+            "uint64" => Ok(ParamType::UInt(64)),
+            "uint32" => Ok(ParamType::UInt(32)),
+            "uint16" => Ok(ParamType::UInt(16)),
+            "uint8" => Ok(ParamType::UInt(8)),
+            "int256" => Ok(ParamType::Int(256)),
+            "int128" => Ok(ParamType::Int(128)),
+            "int64" => Ok(ParamType::Int(64)),
+            "int32" => Ok(ParamType::Int(32)),
+            "int16" => Ok(ParamType::Int(16)),
+            "int8" => Ok(ParamType::Int(8)),
+            "bool" => Ok(ParamType::Bool),
+            "string" => Ok(ParamType::String),
+            "bytes" => Ok(ParamType::Bytes),
+            "bytes32" => Ok(ParamType::FixedBytes(32)),
+            "bytes16" => Ok(ParamType::FixedBytes(16)),
+            "bytes8" => Ok(ParamType::FixedBytes(8)),
+            "bytes4" => Ok(ParamType::FixedBytes(4)),
+            "bytes2" => Ok(ParamType::FixedBytes(2)),
+            _ if s.starts_with('(') && s.ends_with(')') => {
+                let inner = &s[1..s.len() - 1];
+                let types: Vec<&str> = inner.split(',').collect();
+                let mut struct_fields = Vec::new();
+                for t in types {
+                    match ParamType::from_str(t.trim()) {
+                        Ok(data_type) => struct_fields.push(data_type),
+                        Err(_) => return Err(()),
+                    }
+                }
+                Ok(ParamType::Struct(struct_fields))
+            }
+            _ if s.ends_with("[]") => {
+                let base_type = &s[..s.len() - 2];
+                match ParamType::from_str(base_type) {
+                    Ok(t) => Ok(ParamType::Array(Box::new(t))),
+                    Err(_) => Err(()),
+                }
+            }
+            _ => Err(()),
+        }
+    }
+}
+
+impl ParamType {
+    pub fn name(&self) -> String {
+        match self {
+            ParamType::Address => "address".to_string(),
+            ParamType::UInt(256) => "uint256".to_string(),
+            ParamType::UInt(128) => "uint128".to_string(),
+            ParamType::UInt(64) => "uint64".to_string(),
+            ParamType::UInt(32) => "uint32".to_string(),
+            ParamType::UInt(16) => "uint16".to_string(),
+            ParamType::UInt(8) => "uint8".to_string(),
+            ParamType::UInt(_) => "uint256".to_string(),
+            ParamType::Int(256) => "int256".to_string(),
+            ParamType::Int(128) => "int128".to_string(),
+            ParamType::Int(64) => "int64".to_string(),
+            ParamType::Int(32) => "int32".to_string(),
+            ParamType::Int(16) => "int16".to_string(),
+            ParamType::Int(8) => "int8".to_string(),
+            ParamType::Int(_) => "int256".to_string(),
+            ParamType::Bool => "bool".to_string(),
+            ParamType::String => "string".to_string(),
+            ParamType::Bytes => "bytes".to_string(),
+            ParamType::FixedBytes(32) => "bytes32".to_string(),
+            ParamType::FixedBytes(16) => "bytes16".to_string(),
+            ParamType::FixedBytes(8) => "bytes8".to_string(),
+            ParamType::FixedBytes(4) => "bytes4".to_string(),
+            ParamType::FixedBytes(2) => "bytes2".to_string(),
+            ParamType::FixedBytes(_) => "bytes".to_string(),
+            ParamType::Array(inner_type) => format!("{}[]", inner_type.name()),
+            ParamType::Struct(fields) => format!(
+                "({})",
+                fields
+                    .iter()
+                    .map(|f| f.name())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+        }
+    }
+}
+
 #[derive(Debug)]
-pub struct Event {
+pub struct EventFilter {
     pub signature: String,
     pub hash: FixedBytes<32>,
     pub event_name: String,
-    pub data_types: Vec<String>,
+    pub data_types: Vec<ParamType>,
 }
 
-impl Event {
+impl EventFilter {
     pub fn new(signature: String) -> Result<Self, String> {
         // First, validate the format of the event signature
         if !Self::is_valid_signature_format(&signature) {
@@ -193,11 +296,6 @@ impl Event {
 
         // Extract event name and data types after validation
         let (event_name, data_types) = Self::extract_event_signature(&signature)?;
-
-        // Validate that the data types are supported
-        if !Self::validate_data_types(&data_types) {
-            return Err("Some data types are not supported by Solidity.".to_string());
-        }
 
         Ok(Self {
             hash: keccak256(signature.as_bytes()),
@@ -214,51 +312,36 @@ impl Event {
     }
 
     // Function to extract the event signature
-    fn extract_event_signature(event_signature: &str) -> Result<(String, Vec<String>), String> {
+    fn extract_event_signature(event_signature: &str) -> Result<(String, Vec<ParamType>), String> {
         let re = Regex::new(r"^(\w+)\(([^)]+)\)$").unwrap(); // Ensure the signature starts and ends correctly
 
         if let Some(captures) = re.captures(event_signature) {
             let event_name = captures[1].to_string();
             let types = &captures[2];
 
-            let data_types: Vec<String> = types.split(',').map(|s| s.trim().to_string()).collect();
+            let data_types: Result<Vec<ParamType>, String> = types
+                .split(',')
+                .map(|s| s.trim())
+                .map(|type_str| {
+                    ParamType::from_str(type_str.trim())
+                        .map_err(|_| format!("Unsupported data type: {}", type_str))
+                })
+                .collect();
 
-            Ok((event_name, data_types))
+            Ok((event_name, data_types?)) // Return event name and data types
         } else {
-            Err("No match found.".to_string())
+            Err("Event signature format is invalid.".to_string())
         }
-    }
-
-    // Function to validate that data types are supported by Solidity
-    fn validate_data_types(data_types: &[String]) -> bool {
-        let supported_types = [
-            "address",
-            "uint",
-            "int",
-            "bool",
-            "string",
-            "bytes",
-            "address[]",
-            "uint[]",
-            "int[]",
-            "bool[]",
-            "string[]",
-            "bytes[]",
-        ];
-
-        data_types
-            .iter()
-            .all(|data_type| supported_types.contains(&data_type.as_str()))
     }
 }
 
-impl<'de> Deserialize<'de> for Event {
+impl<'de> Deserialize<'de> for EventFilter {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        let result = Event::extract_event_signature(&s);
+        let result = EventFilter::extract_event_signature(&s);
         let (event_name, data_types) = match result {
             Ok((event_name, data_types)) => (event_name, data_types),
             Err(_) => {
@@ -269,7 +352,7 @@ impl<'de> Deserialize<'de> for Event {
             }
         };
 
-        Ok(Event {
+        Ok(EventFilter {
             hash: keccak256(s.as_bytes()),
             event_name,
             data_types,
