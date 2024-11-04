@@ -4,6 +4,7 @@ use alloy::{
     rpc::types::Log,
 };
 
+#[derive(Debug)]
 pub enum Parameter {
     Address(Address),
     Uint(usize),
@@ -14,7 +15,25 @@ pub enum Parameter {
     FixedBytes(Vec<u8>),
     FixedArray(Vec<Parameter>),
     Array(Vec<Parameter>),
-    Tuple(Vec<Parameter>),
+    Struct(Vec<Parameter>),
+}
+
+impl PartialEq for Parameter {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Parameter::Address(a), Parameter::Address(b)) => a == b,
+            (Parameter::Uint(a), Parameter::Uint(b)) => a == b,
+            (Parameter::Int(a), Parameter::Int(b)) => a == b,
+            (Parameter::Bool(a), Parameter::Bool(b)) => a == b,
+            (Parameter::String(a), Parameter::String(b)) => a == b,
+            (Parameter::Bytes(a), Parameter::Bytes(b)) => a == b,
+            (Parameter::FixedBytes(a), Parameter::FixedBytes(b)) => a == b,
+            (Parameter::FixedArray(a), Parameter::FixedArray(b)) => a == b,
+            (Parameter::Array(a), Parameter::Array(b)) => a == b,
+            (Parameter::Struct(a), Parameter::Struct(b)) => a == b,
+            _ => false,
+        }
+    }
 }
 
 pub struct DecodeResult {
@@ -90,10 +109,67 @@ pub fn decode_param(
             };
             Ok(result)
         }
-        ParamType::Bytes => todo!(),
-        ParamType::FixedBytes(_) => todo!(),
-        ParamType::Array(_) => todo!(),
-        ParamType::Struct(_) => todo!(),
+        ParamType::Bytes => {
+            let dynamic_offset = as_usize(&peek_32_bytes(data, offset)?)?;
+            let len = as_usize(&peek_32_bytes(data, dynamic_offset)?)?;
+            let bytes = take_bytes(data, dynamic_offset + 32, len)?;
+            let result = DecodeResult {
+                parameter: Parameter::Bytes(bytes),
+                new_offset: offset + 32,
+            };
+            Ok(result)
+        }
+        ParamType::FixedBytes(len) => {
+            let bytes = take_bytes(data, offset, *len)?;
+            let result = DecodeResult {
+                parameter: Parameter::FixedBytes(bytes),
+                new_offset: offset + 32,
+            };
+            Ok(result)
+        }
+        ParamType::Array(ref t) => {
+            let len_offset = as_usize(&peek_32_bytes(data, offset)?)?;
+            let len = as_usize(&peek_32_bytes(data, len_offset)?)?;
+
+            let tail_offset = len_offset + 32;
+            let tail = &data[tail_offset..];
+
+            let mut parameters = vec![];
+            parameters
+                .try_reserve_exact(len)
+                .map_err(|_| String::from("Out of memory"))?;
+            let mut new_offset = 0;
+
+            for _ in 0..len {
+                let res = decode_param(&Bytes::copy_from_slice(tail), t, new_offset)?;
+                new_offset = res.new_offset;
+                parameters.push(res.parameter);
+            }
+
+            let result = DecodeResult {
+                parameter: Parameter::Array(parameters),
+                new_offset: offset + 32,
+            };
+
+            Ok(result)
+        }
+        ParamType::Struct(ref t) => {
+            let len = t.len();
+            let mut parameters = Vec::with_capacity(len);
+            let mut new_offset = offset;
+            for param in t {
+                let res = decode_param(data, param, new_offset)?;
+                new_offset = res.new_offset;
+                parameters.push(res.parameter);
+            }
+
+            let result = DecodeResult {
+                parameter: Parameter::Struct(parameters),
+                new_offset,
+            };
+
+            Ok(result)
+        }
     }
 }
 
@@ -221,6 +297,79 @@ mod tests {
         let result = decode_param(&data, &param_type, offset).expect("Decoding failed");
         if let Parameter::String(value) = result.parameter {
             assert_eq!(value, "Hello, World!");
+        } else {
+            panic!("Type of parameter incorrect");
+        }
+    }
+
+    #[test]
+    fn test_decode_bytes() {
+        let data = Bytes::from(hex!(
+            "0000000000000000000000000000000000000000000000000000000000000020\
+             0000000000000000000000000000000000000000000000000000000000000004\
+             deadbeef00000000000000000000000000000000000000000000000000000000"
+        ));
+        let param_type = ParamType::Bytes;
+        let offset = 0;
+
+        let result = decode_param(&data, &param_type, offset).expect("Decoding failed");
+        if let Parameter::Bytes(value) = result.parameter {
+            assert_eq!(value, vec![0xde, 0xad, 0xbe, 0xef]);
+        } else {
+            panic!("Type of parameter incorrect");
+        }
+    }
+
+    #[test]
+    fn test_decode_fixed_bytes() {
+        let data = Bytes::from(hex!(
+            "deadbeef00000000000000000000000000000000000000000000000000000000"
+        ));
+        let param_type = ParamType::FixedBytes(4);
+        let offset = 0;
+
+        let result = decode_param(&data, &param_type, offset).expect("Decoding failed");
+        if let Parameter::FixedBytes(value) = result.parameter {
+            assert_eq!(value, vec![0xde, 0xad, 0xbe, 0xef]);
+        } else {
+            panic!("Type of parameter incorrect");
+        }
+    }
+
+    #[test]
+    fn test_decode_array() {
+        let data = Bytes::from(hex!(
+            "0000000000000000000000000000000000000000000000000000000000000020\
+             0000000000000000000000000000000000000000000000000000000000000003\
+             0000000000000000000000000000000000000000000000000000000000000001\
+             0000000000000000000000000000000000000000000000000000000000000002\
+             0000000000000000000000000000000000000000000000000000000000000003"
+        ));
+        let param_type = ParamType::Array(Box::new(ParamType::UInt(256)));
+        let offset = 0;
+
+        let result = decode_param(&data, &param_type, offset).expect("Decoding failed");
+        if let Parameter::Array(values) = result.parameter {
+            let expected_values = vec![Parameter::Uint(1), Parameter::Uint(2), Parameter::Uint(3)];
+            assert_eq!(values, expected_values);
+        } else {
+            panic!("Type of parameter incorrect");
+        }
+    }
+
+    #[test]
+    fn test_decode_struct() {
+        let data = Bytes::from(hex!(
+            "000000000000000000000000000000000000000000000000000000000000002a\
+             0000000000000000000000000000000000000000000000000000000000000001"
+        ));
+        let param_type = ParamType::Struct(vec![ParamType::UInt(256), ParamType::Bool]);
+        let offset = 0;
+
+        let result = decode_param(&data, &param_type, offset).expect("Decoding failed");
+        if let Parameter::Struct(values) = result.parameter {
+            let expected_values = vec![Parameter::Uint(42), Parameter::Bool(true)];
+            assert_eq!(values, expected_values);
         } else {
             panic!("Type of parameter incorrect");
         }
