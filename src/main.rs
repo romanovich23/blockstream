@@ -30,7 +30,7 @@ async fn main() {
                         }
                     },
                 )
-                    .await
+                .await
                 {
                     Ok(_) => {}
                     Err(err) => {
@@ -38,7 +38,7 @@ async fn main() {
                     }
                 }
             })
-                .await
+            .await
             {
                 Ok(_) => {}
                 Err(err) => {

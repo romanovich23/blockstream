@@ -1,5 +1,6 @@
 use std::future::Future;
 
+use super::configuration::{EventFilter, EventSubscription};
 use alloy::eips::BlockNumberOrTag;
 use alloy::network::TransactionResponse;
 use alloy::{
@@ -8,7 +9,6 @@ use alloy::{
     transports::{BoxTransport, TransportError},
 };
 use futures_util::{stream, StreamExt};
-use super::configuration::{EventFilter, EventSubscription};
 
 pub async fn subscribe_to_blocks<T, Fut>(
     provider: &RootProvider<BoxTransport>,
@@ -16,7 +16,7 @@ pub async fn subscribe_to_blocks<T, Fut>(
 ) -> Result<(), TransportError>
 where
     T: Fn(Block) -> Fut,
-    Fut: Future<Output=()>,
+    Fut: Future<Output = ()>,
 {
     // Subscribe to block updates from the provider
     match provider.subscribe_blocks().await {
@@ -26,8 +26,13 @@ where
             // Process incoming blocks
             while let Some(header) = stream.next().await {
                 println!("Received block number: {}", header.number);
-                match provider.get_block_by_number(
-                    BlockNumberOrTag::Number(header.number), BlockTransactionsKind::Full).await? {
+                match provider
+                    .get_block_by_number(
+                        BlockNumberOrTag::Number(header.number),
+                        BlockTransactionsKind::Full,
+                    )
+                    .await?
+                {
                     Some(block) => {
                         action(block); // Call the provided action on the block
                     }
@@ -37,7 +42,7 @@ where
                 }
             }
         }
-        Err(err) => {
+        Err(_err) => {
             // Handle the case where PubSub is unavailable
             println!("Using HTTP provider, switching to watch_blocks instead.");
             let poller = provider.watch_blocks().await?;
@@ -72,7 +77,7 @@ pub async fn process_transaction_logs<'a, T, Fut>(
 ) -> Result<(), TransportError>
 where
     T: Fn(&'a EventFilter, Log) -> Fut,
-    Fut: Future<Output=()>,
+    Fut: Future<Output = ()>,
 {
     // Iterate over the transactions in the block
     for transaction in block.transactions.into_transactions() {
@@ -86,7 +91,10 @@ where
                 println!("Found transaction to contract: {:?}", to);
 
                 // Fetch the transaction receipt
-                match provider.get_transaction_receipt(transaction.tx_hash()).await {
+                match provider
+                    .get_transaction_receipt(transaction.tx_hash())
+                    .await
+                {
                     Ok(Some(tx_receipt)) => {
                         // Iterate over logs in the transaction receipt
                         for log in tx_receipt.inner.logs() {
@@ -94,14 +102,19 @@ where
                             // Check each log for event hashes
                             for event_filter in event_filters {
                                 if log.topics().contains(&event_filter.hash) {
-                                    println!("Event found in transaction {}", transaction.tx_hash());
+                                    println!(
+                                        "Event found in transaction {}",
+                                        transaction.tx_hash()
+                                    );
                                     // Call the closure to process the event data
                                     process_event_log(event_filter, log.clone()).await;
                                 }
                             }
                         }
                     }
-                    Ok(None) => println!("No receipt found for transaction {}", transaction.tx_hash()),
+                    Ok(None) => {
+                        println!("No receipt found for transaction {}", transaction.tx_hash())
+                    }
                     Err(err) => eprintln!("Error fetching transaction receipt: {}", err),
                 }
             }

@@ -7,7 +7,7 @@ network:
 subscriptions:
   - contract_address: ${CONTRACT_ADDRESS:0x061b3e39A7f08F739641D31b9aD5795B3a34159f}
     events:
-      - "TransferExecuted(address,address)"
+      - TransferExecuted(address,address)
   - contract_address: ${CONTRACT_ADDRESS:0x27FcDf131c8401ac27955d6116a2E90f3293683a}
     events:
-      - "Approval(address,address)"
+      - Approval(address,address)
