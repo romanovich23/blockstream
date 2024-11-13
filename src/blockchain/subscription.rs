@@ -1,54 +1,62 @@
+use std::future::Future;
+
+use alloy::eips::BlockNumberOrTag;
+use alloy::network::TransactionResponse;
 use alloy::{
     providers::{Provider, RootProvider},
-    pubsub::PubSubFrontend,
     rpc::types::{Block, BlockTransactionsKind, Log},
     transports::{BoxTransport, TransportError},
 };
 use futures_util::{stream, StreamExt};
-
 use super::configuration::{EventFilter, EventSubscription};
 
-pub async fn subscribe_to_blocks(
-    provider: RootProvider<BoxTransport>,
-    action: fn(Block) -> (),
-) -> Result<(), TransportError> {
+pub async fn subscribe_to_blocks<T, Fut>(
+    provider: &RootProvider<BoxTransport>,
+    action: T,
+) -> Result<(), TransportError>
+where
+    T: Fn(Block) -> Fut,
+    Fut: Future<Output=()>,
+{
     // Subscribe to block updates from the provider
     match provider.subscribe_blocks().await {
         Ok(subscription) => {
             let mut stream = subscription.into_stream();
 
             // Process incoming blocks
-            while let Some(block) = stream.next().await {
-                println!("Received block number: {}", block.header.number);
-                action(block); // Call the provided action on the block
+            while let Some(header) = stream.next().await {
+                println!("Received block number: {}", header.number);
+                match provider.get_block_by_number(
+                    BlockNumberOrTag::Number(header.number), BlockTransactionsKind::Full).await? {
+                    Some(block) => {
+                        action(block); // Call the provided action on the block
+                    }
+                    None => {
+                        println!("Block not found for number {}", header.number);
+                    }
+                }
             }
         }
         Err(err) => {
-            // Check if the error message indicates that PubSub is unavailable
-            if err.to_string().contains("PubsubUnavailable") {
-                // Handle the case where PubSub is unavailable
-                println!("Using HTTP provider, switching to watch_blocks instead.");
-                let poller = provider.watch_blocks().await?;
-                let mut stream = poller.into_stream().flat_map(stream::iter);
+            // Handle the case where PubSub is unavailable
+            println!("Using HTTP provider, switching to watch_blocks instead.");
+            let poller = provider.watch_blocks().await?;
+            let mut stream = poller.into_stream().flat_map(stream::iter);
 
-                // Process incoming blocks
-                while let Some(block_hash) = stream.next().await {
-                    match provider
-                        .get_block_by_hash(block_hash, BlockTransactionsKind::Full)
-                        .await?
-                    {
-                        Some(block) => {
-                            println!("Received block number: {}", block.header.number);
-                            action(block); // Call the provided action on the block
-                        }
-                        None => {
-                            println!("No block found for hash: {block_hash}");
-                        }
+            // Process incoming blocks
+            while let Some(block_hash) = stream.next().await {
+                match provider
+                    .get_block_by_hash(block_hash, BlockTransactionsKind::Full)
+                    .await?
+                {
+                    Some(block) => {
+                        println!("Received block number: {}", block.header.number);
+                        action(block); // Call the provided action on the block
+                    }
+                    None => {
+                        println!("No block found for hash: {block_hash}");
                     }
                 }
-            } else {
-                // Handle other errors
-                return Err(err);
             }
         }
     }
@@ -56,43 +64,44 @@ pub async fn subscribe_to_blocks(
     Ok(())
 }
 
-pub async fn process_transaction_logs<F>(
-    provider: RootProvider<PubSubFrontend>,
+pub async fn process_transaction_logs<'a, T, Fut>(
+    provider: &RootProvider<BoxTransport>,
     block: Block,
-    subscriptions: &[EventSubscription],
-    process_event_log: F,
+    subscriptions: &'a [EventSubscription],
+    process_event_log: T,
 ) -> Result<(), TransportError>
 where
-    F: Fn(&EventFilter, &Log),
+    T: Fn(&'a EventFilter, Log) -> Fut,
+    Fut: Future<Output=()>,
 {
     // Iterate over the transactions in the block
     for transaction in block.transactions.into_transactions() {
-        if let Some(to) = transaction.to {
+        if let Some(to) = TransactionResponse::to(&transaction) {
             // Check if the destination address is in the filters
-            if let Some(events) = subscriptions
+            if let Some(event_filters) = subscriptions
                 .iter()
-                .find(|suscription| suscription.contract_address == to)
-                .map(|suscription| &suscription.events)
+                .find(|subscription| subscription.contract_address == to)
+                .map(|subscription| &subscription.events)
             {
                 println!("Found transaction to contract: {:?}", to);
 
                 // Fetch the transaction receipt
-                match provider.get_transaction_receipt(transaction.hash).await {
+                match provider.get_transaction_receipt(transaction.tx_hash()).await {
                     Ok(Some(tx_receipt)) => {
                         // Iterate over logs in the transaction receipt
                         for log in tx_receipt.inner.logs() {
                             println!("Found log: {log:?}");
                             // Check each log for event hashes
-                            for event in events {
-                                if log.topics().contains(&event.hash) {
-                                    println!("Event found in transaction {}", transaction.hash);
+                            for event_filter in event_filters {
+                                if log.topics().contains(&event_filter.hash) {
+                                    println!("Event found in transaction {}", transaction.tx_hash());
                                     // Call the closure to process the event data
-                                    process_event_log(event, log); // Adjust based on actual log type
+                                    process_event_log(event_filter, log.clone()).await;
                                 }
                             }
                         }
                     }
-                    Ok(None) => println!("No receipt found for transaction {}", transaction.hash),
+                    Ok(None) => println!("No receipt found for transaction {}", transaction.tx_hash()),
                     Err(err) => eprintln!("Error fetching transaction receipt: {}", err),
                 }
             }

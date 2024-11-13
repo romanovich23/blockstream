@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use alloy::primitives::Address;
-use wevscan::config::load_config;
+use blockstream::config::load_config;
 
 #[test]
 fn test_load_config_env() {
