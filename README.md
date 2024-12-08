@@ -2,10 +2,10 @@
 
 A web3 event subscriber for tracking and capturing smart contract events in real-time.
 
-![Dynamic TOML Badge](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fromanovich23%2Fblockstream%2Fmain%2FCargo.toml&query=%24.package.version&prefix=v&style=for-the-badge&label=version&color=%231E90FF)
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/romanovich23/blockstream/ci.yml?style=for-the-badge&label=CI&color=%2390EE90)
-![Codecov](https://img.shields.io/codecov/c/github/romanovich23/blockstream?style=for-the-badge&color=%23FF7F50)
-![GitHub License](https://img.shields.io/github/license/romanovich23/blockstream?style=for-the-badge&color=%23AFEEEE)
+![Dynamic TOML Badge](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fromanovich23%2Fblockstream%2Fmain%2FCargo.toml&query=%24.package.version&prefix=v&style=for-the-badge&label=version)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/romanovich23/blockstream/ci.yml?style=for-the-badge&label=CI)
+![Codecov](https://img.shields.io/codecov/c/github/romanovich23/blockstream?style=for-the-badge)
+![GitHub License](https://img.shields.io/github/license/romanovich23/blockstream?style=for-the-badge)
 
 ## Testing
 
