@@ -34,7 +34,7 @@ pub enum NetworkProtocol {
 }
 
 impl Display for NetworkProtocol {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             NetworkProtocol::Http => write!(f, "http"),
             NetworkProtocol::Https => write!(f, "https"),
@@ -47,7 +47,7 @@ impl Display for NetworkProtocol {
 impl<'de> Deserialize<'de> for NetworkProtocol {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de>,
+        D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
         match s.as_str() {
@@ -55,7 +55,7 @@ impl<'de> Deserialize<'de> for NetworkProtocol {
             "https" => Ok(NetworkProtocol::Https),
             "ws" => Ok(NetworkProtocol::WebSocket),
             "ipc" => Ok(NetworkProtocol::Ipc),
-            _ => Err(serde::de::Error::custom(format!(
+            _ => Err(de::Error::custom(format!(
                 "Invalid network protocol: {}",
                 s
             ))),
@@ -108,12 +108,21 @@ impl EventSubscription {
     }
 }
 
+impl Display for EventSubscription {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Contract: {}, Events: {:?}",
+            self.contract_address, self.events
+        )
+    }
+}
+
 impl<'de> Deserialize<'de> for EventSubscription {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        // Definir un Visitor para procesar el contenido
         struct EventSubscriptionVisitor;
 
         impl<'de> Visitor<'de> for EventSubscriptionVisitor {
@@ -154,7 +163,6 @@ impl<'de> Deserialize<'de> for EventSubscription {
                             events = Some(map.next_value()?);
                         }
                         _ => {
-                            // Ignora campos adicionales si es necesario
                             let _: de::IgnoredAny = map.next_value()?;
                         }
                     }
@@ -164,14 +172,10 @@ impl<'de> Deserialize<'de> for EventSubscription {
                     contract_address.ok_or_else(|| de::Error::missing_field("contract_address"))?;
                 let events = events.ok_or_else(|| de::Error::missing_field("events"))?;
 
-                Ok(EventSubscription {
-                    contract_address,
-                    events,
-                })
+                Ok(EventSubscription::new(contract_address, events))
             }
         }
 
-        // Llama a la función para deserializar utilizando el Visitor
         deserializer.deserialize_map(EventSubscriptionVisitor)
     }
 }
@@ -190,7 +194,7 @@ pub enum ParamType {
 }
 
 impl FromStr for ParamType {
-    type Err = (); // O define un tipo de error más específico
+    type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -281,7 +285,7 @@ impl ParamType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EventFilter {
     pub signature: String,
     pub hash: FixedBytes<32>,
@@ -343,22 +347,6 @@ impl<'de> Deserialize<'de> for EventFilter {
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        let result = EventFilter::extract_event_signature(&s);
-        let (event_name, data_types) = match result {
-            Ok((event_name, data_types)) => (event_name, data_types),
-            Err(_) => {
-                return Err(serde::de::Error::custom(format!(
-                    "Invalid event signature: {}",
-                    s
-                )))
-            }
-        };
-
-        Ok(EventFilter {
-            hash: keccak256(s.as_bytes()),
-            event_name,
-            data_types,
-            signature: s,
-        })
+        EventFilter::new(s).map_err(|err| serde::de::Error::custom(err))
     }
 }

@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use alloy::primitives::Address;
-use blockstream::config::load_config;
+use blockstream::configuration::load_config;
 
 #[test]
 fn test_load_config_env() {
@@ -10,19 +10,19 @@ fn test_load_config_env() {
     assert_eq!(config.subscriptions.len(), 2);
     assert_eq!(
         config.subscriptions[0].contract_address,
-        Address::from_str("0x061b3e39A7f08F739641D31b9aD5795B3a34159f").unwrap()
+        Address::from_str("0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512").unwrap()
     );
     assert_eq!(
         config.subscriptions[0].events[0].signature,
-        "TransferExecuted(address,address)"
+        "DummyStructCreated(uint256,uint256,int256,bool,address,string,bytes32)"
     );
     assert_eq!(
         config.subscriptions[1].contract_address,
-        Address::from_str("0x27FcDf131c8401ac27955d6116a2E90f3293683a").unwrap()
+        Address::from_str("0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512").unwrap()
     );
     assert_eq!(
         config.subscriptions[1].events[0].signature,
-        "Approval(address,address)"
+        "DummyStructUpdated(uint256,uint256,int256,bool,address,string,bytes32)"
     );
 }
 
@@ -30,22 +30,22 @@ fn test_load_config_env() {
 fn test_load_config_default() {
     let config = load_config(Option::None);
     assert_eq!(config.network.url(), "ws://localhost:8545");
-    assert_eq!(config.subscriptions.len(), 4);
+    assert_eq!(config.subscriptions.len(), 2);
     assert_eq!(
         config.subscriptions[0].contract_address,
-        Address::from_str("0x061b3e39A7f08F739641D31b9aD5795B3a34159f").unwrap()
+        Address::from_str("0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512").unwrap()
     );
     assert_eq!(
         config.subscriptions[0].events[0].signature,
-        "TransferExecuted(address,address)"
+        "DummyStructCreated(uint256,uint256,int256,bool,address,string,bytes32)"
     );
     assert_eq!(
         config.subscriptions[1].contract_address,
-        Address::from_str("0x27FcDf131c8401ac27955d6116a2E90f3293683a").unwrap()
+        Address::from_str("0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512").unwrap()
     );
     assert_eq!(
         config.subscriptions[1].events[0].signature,
-        "Approval(address,address)"
+        "DummyStructUpdated(uint256,uint256,int256,bool,address,string,bytes32)"
     );
 }
 

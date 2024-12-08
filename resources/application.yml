@@ -5,15 +5,9 @@ network:
   path: ${BLOCKCHAIN_PATH:}
 
 subscriptions:
-  - contract_address: ${CONTRACT_ADDRESS:0x061b3e39A7f08F739641D31b9aD5795B3a34159f}
+  - contract_address: ${CONTRACT_ADDRESS:0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512}
     events:
-      - TransferExecuted(address,address)
-  - contract_address: ${CONTRACT_ADDRESS:0x27FcDf131c8401ac27955d6116a2E90f3293683a}
+      - DummyStructCreated(uint256,uint256,int256,bool,address,string,bytes32)
+  - contract_address: ${CONTRACT_ADDRESS:0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512}
     events:
-      - Approval(address,address)
-  - contract_address: ${CONTRACT_ADDRESS:0x5FbDB2315678afecb367f032d93F642f64180aa3}
-    events:
-      - DummyStructCreated(uint256,uint256,int256,bool,string,bytes32)
-  - contract_address: ${CONTRACT_ADDRESS:0x5FbDB2315678afecb367f032d93F642f64180aa3}
-    events:
-      - DummyStructUpdated(uint256,uint256,int256,bool,string,bytes32)
+      - DummyStructUpdated(uint256,uint256,int256,bool,address,string,bytes32)

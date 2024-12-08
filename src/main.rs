@@ -1,15 +1,17 @@
 use blockstream::{
     blockchain::{
-        connection,
-        decode::decode_event,
-        subscription::{process_transaction_logs, subscribe_to_blocks},
+        connection, decode::decode_event, subscription::subscribe_to_blocks,
+        transaction::process_transaction_logs,
     },
-    config::load_config,
+    configuration::load_config,
 };
 
 #[tokio::main]
 async fn main() {
     let config = load_config(Option::None);
+    for subscription in &config.subscriptions {
+        println!("subscription {:}", subscription)
+    }
     match connection::build_connection(&config).await {
         Ok(connection) => {
             match subscribe_to_blocks(&connection, |block| async {
@@ -19,7 +21,7 @@ async fn main() {
                     block,
                     &config.subscriptions,
                     |event_filter, log| async move {
-                        match decode_event(event_filter, &log) {
+                        match decode_event(&event_filter, &log) {
                             Ok(parameters) => {
                                 println!("Event: {:?}", event_filter);
                                 println!("Parameters: {:?}", parameters);
