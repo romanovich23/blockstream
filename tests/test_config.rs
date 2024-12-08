@@ -30,7 +30,7 @@ fn test_load_config_env() {
 fn test_load_config_default() {
     let config = load_config(Option::None);
     assert_eq!(config.network.url(), "ws://localhost:8545");
-    assert_eq!(config.subscriptions.len(), 2);
+    assert_eq!(config.subscriptions.len(), 4);
     assert_eq!(
         config.subscriptions[0].contract_address,
         Address::from_str("0x061b3e39A7f08F739641D31b9aD5795B3a34159f").unwrap()
