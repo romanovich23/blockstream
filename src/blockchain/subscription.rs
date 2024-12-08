@@ -8,6 +8,7 @@ use alloy::{
     transports::{BoxTransport, TransportError},
 };
 use futures_util::{stream, StreamExt};
+use log::info;
 
 pub async fn subscribe_to_blocks<T, Fut>(
     provider: &RootProvider<BoxTransport>,
@@ -24,7 +25,7 @@ where
         }
         Err(_err) => {
             // Handle the case where PubSub is unavailable
-            println!("Using HTTP provider, switching to watch_blocks instead.");
+            info!("Using HTTP provider, switching to watch_blocks instead.");
             watch_blocks(provider, action).await?;
         }
     }
@@ -50,11 +51,11 @@ where
             .await?
         {
             Some(block) => {
-                println!("Received block number: {}", block.header.number);
+                info!("Received block number: {}", block.header.number);
                 action(block).await; // Call the provided action on the block
             }
             None => {
-                println!("No block found for hash: {block_hash}");
+                info!("No block found for hash: {block_hash}");
             }
         }
     }
@@ -74,7 +75,7 @@ where
 
     // Process incoming blocks
     Ok(while let Some(header) = stream.next().await {
-        println!("Received block number: {}", header.number);
+        info!("Received block number: {}", header.number);
         match provider
             .get_block_by_number(
                 BlockNumberOrTag::Number(header.number),
@@ -86,7 +87,7 @@ where
                 action(block).await; // Call the provided action on the block
             }
             None => {
-                println!("Block not found for number {}", header.number);
+                info!("Block not found for number {}", header.number);
             }
         }
     })

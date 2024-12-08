@@ -3,6 +3,7 @@ use alloy::network::TransactionResponse;
 use alloy::providers::{Provider, RootProvider};
 use alloy::rpc::types::{Block, Log};
 use alloy::transports::{BoxTransport, TransportError};
+use log::{error, info};
 use std::future::Future;
 
 pub async fn process_transaction_logs<T, Fut>(
@@ -24,8 +25,6 @@ where
                 .find(|subscription| subscription.contract_address == to)
                 .map(|subscription| &subscription.events)
             {
-                println!("Found transaction to contract: {:?}", to);
-
                 // Fetch the transaction receipt
                 match provider
                     .get_transaction_receipt(transaction.tx_hash())
@@ -34,12 +33,12 @@ where
                     Ok(Some(tx_receipt)) => {
                         // Iterate over logs in the transaction receipt
                         for log in tx_receipt.inner.logs() {
-                            println!("Found log: {log:?}");
                             // Check each log for event hashes
                             for event_filter in event_filters {
                                 if log.inner.topics().contains(&event_filter.hash) {
-                                    println!(
-                                        "Event found in transaction {}",
+                                    info!(
+                                        "Event {} found in transaction {}",
+                                        event_filter.event_name,
                                         transaction.tx_hash()
                                     );
                                     // Call the closure to process the event data
@@ -49,9 +48,9 @@ where
                         }
                     }
                     Ok(None) => {
-                        println!("No receipt found for transaction {}", transaction.tx_hash())
+                        info!("No receipt found for transaction {}", transaction.tx_hash())
                     }
-                    Err(err) => eprintln!("Error fetching transaction receipt: {}", err),
+                    Err(err) => error!("Error fetching transaction receipt: {}", err),
                 }
             }
         }

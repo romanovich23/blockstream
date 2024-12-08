@@ -4,18 +4,20 @@ use blockstream::{
         transaction::process_transaction_logs,
     },
     configuration::load_config,
+    logger::initialize_logger,
 };
+use log::{error, info};
 
 #[tokio::main]
 async fn main() {
+    initialize_logger();
     let config = load_config(Option::None);
     for subscription in &config.subscriptions {
-        println!("subscription {:}", subscription)
+        info!("Configured subscription - {:}", subscription)
     }
     match connection::build_connection(&config).await {
         Ok(connection) => {
             match subscribe_to_blocks(&connection, |block| async {
-                println!("Block: {:?}", block);
                 match process_transaction_logs(
                     &connection,
                     block,
@@ -23,11 +25,10 @@ async fn main() {
                     |event_filter, log| async move {
                         match decode_event(&event_filter, &log) {
                             Ok(parameters) => {
-                                println!("Event: {:?}", event_filter);
-                                println!("Parameters: {:?}", parameters);
+                                info!("Event data output: {:?}", parameters);
                             }
                             Err(err) => {
-                                eprintln!("Error decoding event: {}", err);
+                                error!("Error decoding event: {}", err);
                             }
                         }
                     },
@@ -36,7 +37,7 @@ async fn main() {
                 {
                     Ok(_) => {}
                     Err(err) => {
-                        eprintln!("Error processing transaction logs: {}", err);
+                        error!("Error processing transaction logs: {}", err);
                     }
                 }
             })
@@ -44,12 +45,12 @@ async fn main() {
             {
                 Ok(_) => {}
                 Err(err) => {
-                    eprintln!("Error subscribing to blocks: {}", err);
+                    error!("Error subscribing to blocks: {}", err);
                 }
             }
         }
         Err(err) => {
-            eprint!("Error connecting to the blockchain: {}", err);
+            error!("Error connecting to the blockchain: {}", err);
         }
     }
 }
