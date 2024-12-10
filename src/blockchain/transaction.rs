@@ -1,4 +1,5 @@
 use crate::blockchain::configuration::{EventFilter, EventSubscription};
+use alloy::consensus::Transaction;
 use alloy::network::TransactionResponse;
 use alloy::providers::{Provider, RootProvider};
 use alloy::rpc::types::{Block, Log};
@@ -18,7 +19,7 @@ where
 {
     // Iterate over the transactions in the block
     for transaction in block.transactions.into_transactions() {
-        if let Some(to) = TransactionResponse::to(&transaction) {
+        if let Some(to) = transaction.to() {
             // Check if the destination address is in the filters
             if let Some(event_filters) = subscriptions
                 .iter()
