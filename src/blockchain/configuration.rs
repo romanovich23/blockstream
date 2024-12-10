@@ -9,6 +9,7 @@ use serde::{
     de::{self, MapAccess, Visitor},
     Deserialize, Deserializer,
 };
+use thiserror::Error;
 
 #[derive(Debug, Deserialize)]
 pub struct Configuration {
@@ -23,6 +24,12 @@ impl Configuration {
             subscriptions,
         }
     }
+}
+
+#[derive(Debug, Error)]
+pub enum NetworkProtocolError {
+    #[error("Invalid network protocol: {0}")]
+    InvalidProtocol(String),
 }
 
 #[derive(Debug)]
@@ -55,10 +62,7 @@ impl<'de> Deserialize<'de> for NetworkProtocol {
             "https" => Ok(NetworkProtocol::Https),
             "ws" => Ok(NetworkProtocol::WebSocket),
             "ipc" => Ok(NetworkProtocol::Ipc),
-            _ => Err(de::Error::custom(format!(
-                "Invalid network protocol: {}",
-                s
-            ))),
+            _ => Err(de::Error::custom(NetworkProtocolError::InvalidProtocol(s))),
         }
     }
 }
@@ -145,16 +149,13 @@ impl<'de> Deserialize<'de> for EventSubscription {
                             if contract_address.is_some() {
                                 return Err(de::Error::duplicate_field("contract_address"));
                             }
-                            let value = map.next_value()?;
-                            match Address::from_str(value) {
-                                Ok(address) => contract_address = Some(address),
-                                Err(_) => {
-                                    return Err(de::Error::invalid_value(
-                                        de::Unexpected::Str(value),
-                                        &"a valid address",
-                                    ))
-                                }
-                            }
+                            let value: &str = map.next_value()?;
+                            contract_address = Some(Address::from_str(value).map_err(|_| {
+                                de::Error::invalid_value(
+                                    de::Unexpected::Str(value),
+                                    &"a valid address",
+                                )
+                            })?);
                         }
                         "events" => {
                             if events.is_some() {
@@ -180,6 +181,12 @@ impl<'de> Deserialize<'de> for EventSubscription {
     }
 }
 
+#[derive(Debug, Clone, Error)]
+pub enum ParamTypeError {
+    #[error("Unsupported data type: {0}")]
+    UnsupportedDataType(String),
+}
+
 #[derive(Debug, Clone)]
 pub enum ParamType {
     Address,
@@ -194,7 +201,7 @@ pub enum ParamType {
 }
 
 impl FromStr for ParamType {
-    type Err = ();
+    type Err = ParamTypeError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -226,21 +233,15 @@ impl FromStr for ParamType {
                 let types: Vec<&str> = inner.split(',').collect();
                 let mut struct_fields = Vec::new();
                 for t in types {
-                    match ParamType::from_str(t.trim()) {
-                        Ok(data_type) => struct_fields.push(data_type),
-                        Err(_) => return Err(()),
-                    }
+                    struct_fields.push(ParamType::from_str(t.trim())?);
                 }
                 Ok(ParamType::Struct(struct_fields))
             }
             _ if s.ends_with("[]") => {
                 let base_type = &s[..s.len() - 2];
-                match ParamType::from_str(base_type) {
-                    Ok(t) => Ok(ParamType::Array(Box::new(t))),
-                    Err(_) => Err(()),
-                }
+                Ok(ParamType::Array(Box::new(ParamType::from_str(base_type)?)))
             }
-            _ => Err(()),
+            _ => Err(ParamTypeError::UnsupportedDataType(s.to_string())),
         }
     }
 }
@@ -285,6 +286,14 @@ impl ParamType {
     }
 }
 
+#[derive(Debug, Clone, Error)]
+pub enum EventFilterError {
+    #[error("Invalid event signature format.")]
+    InvalidSignatureFormat,
+    #[error("Unsupported data type: {0}")]
+    UnsupportedDataType(String),
+}
+
 #[derive(Debug, Clone)]
 pub struct EventFilter {
     pub signature: String,
@@ -294,13 +303,11 @@ pub struct EventFilter {
 }
 
 impl EventFilter {
-    pub fn new(signature: String) -> Result<Self, String> {
-        // First, validate the format of the event signature
+    pub fn new(signature: String) -> Result<Self, EventFilterError> {
         if !Self::is_valid_signature_format(&signature) {
-            return Err("Invalid event signature format.".to_string());
+            return Err(EventFilterError::InvalidSignatureFormat);
         }
 
-        // Extract event name and data types after validation
         let (event_name, data_types) = Self::extract_event_signature(&signature)?;
 
         Ok(Self {
@@ -311,32 +318,32 @@ impl EventFilter {
         })
     }
 
-    // Function to validate the format of the event signature
     fn is_valid_signature_format(event_signature: &str) -> bool {
         let re = Regex::new(r"^(\w+)\(([^)]+)\)$").unwrap();
         re.is_match(event_signature)
     }
 
-    // Function to extract the event signature
-    fn extract_event_signature(event_signature: &str) -> Result<(String, Vec<ParamType>), String> {
-        let re = Regex::new(r"^(\w+)\(([^)]+)\)$").unwrap(); // Ensure the signature starts and ends correctly
+    fn extract_event_signature(
+        event_signature: &str,
+    ) -> Result<(String, Vec<ParamType>), EventFilterError> {
+        let re = Regex::new(r"^(\w+)\(([^)]+)\)$").unwrap();
 
         if let Some(captures) = re.captures(event_signature) {
             let event_name = captures[1].to_string();
             let types = &captures[2];
 
-            let data_types: Result<Vec<ParamType>, String> = types
+            let data_types: Result<Vec<ParamType>, EventFilterError> = types
                 .split(',')
                 .map(|s| s.trim())
                 .map(|type_str| {
                     ParamType::from_str(type_str.trim())
-                        .map_err(|_| format!("Unsupported data type: {}", type_str))
+                        .map_err(|_| EventFilterError::UnsupportedDataType(type_str.to_string()))
                 })
                 .collect();
 
-            Ok((event_name, data_types?)) // Return event name and data types
+            Ok((event_name, data_types?))
         } else {
-            Err("Event signature format is invalid.".to_string())
+            Err(EventFilterError::InvalidSignatureFormat)
         }
     }
 }

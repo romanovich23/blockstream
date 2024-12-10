@@ -10,15 +10,27 @@ use log::{error, info};
 
 #[tokio::main]
 async fn main() {
-    initialize_logger();
-    let config = load_config(Option::None);
-    for subscription in &config.subscriptions {
-        info!("Configured subscription - {:}", subscription)
+    if let Err(err) = initialize_logger() {
+        error!("Failed to initialize logger: {}", err);
+        return;
     }
+
+    let config = match load_config(None) {
+        Ok(config) => config,
+        Err(err) => {
+            error!("Failed to load configuration: {}", err);
+            return;
+        }
+    };
+
+    for subscription in &config.subscriptions {
+        info!("Configured subscription - {:?}", subscription);
+    }
+
     match connection::build_connection(&config).await {
         Ok(connection) => {
-            match subscribe_to_blocks(&connection, |block| async {
-                match process_transaction_logs(
+            if let Err(err) = subscribe_to_blocks(&connection, |block| async {
+                if let Err(err) = process_transaction_logs(
                     &connection,
                     block,
                     &config.subscriptions,
@@ -35,18 +47,12 @@ async fn main() {
                 )
                 .await
                 {
-                    Ok(_) => {}
-                    Err(err) => {
-                        error!("Error processing transaction logs: {}", err);
-                    }
+                    error!("Error processing transaction logs: {}", err);
                 }
             })
             .await
             {
-                Ok(_) => {}
-                Err(err) => {
-                    error!("Error subscribing to blocks: {}", err);
-                }
+                error!("Error subscribing to blocks: {}", err);
             }
         }
         Err(err) => {

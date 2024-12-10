@@ -3,8 +3,9 @@ use alloy::{
     primitives::{Address, Bytes, Signed},
     rpc::types::Log,
 };
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Parameter {
     Address(Address),
     Uint(usize),
@@ -18,22 +19,18 @@ pub enum Parameter {
     Struct(Vec<Parameter>),
 }
 
-impl PartialEq for Parameter {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Parameter::Address(a), Parameter::Address(b)) => a == b,
-            (Parameter::Uint(a), Parameter::Uint(b)) => a == b,
-            (Parameter::Int(a), Parameter::Int(b)) => a == b,
-            (Parameter::Bool(a), Parameter::Bool(b)) => a == b,
-            (Parameter::String(a), Parameter::String(b)) => a == b,
-            (Parameter::Bytes(a), Parameter::Bytes(b)) => a == b,
-            (Parameter::FixedBytes(a), Parameter::FixedBytes(b)) => a == b,
-            (Parameter::FixedArray(a), Parameter::FixedArray(b)) => a == b,
-            (Parameter::Array(a), Parameter::Array(b)) => a == b,
-            (Parameter::Struct(a), Parameter::Struct(b)) => a == b,
-            _ => false,
-        }
-    }
+#[derive(Debug, Error)]
+pub enum DecodeError {
+    #[error("Out of bounds")]
+    OutOfBounds,
+    #[error("Invalid unsigned integer")]
+    InvalidUnsignedInteger,
+    #[error("Invalid signed integer")]
+    InvalidSignedInteger,
+    #[error("UTF-8 error: {0}")]
+    Utf8Error(#[from] std::string::FromUtf8Error),
+    #[error("Memory allocation error")]
+    MemoryAllocationError,
 }
 
 pub struct DecodeResult {
@@ -41,7 +38,7 @@ pub struct DecodeResult {
     pub new_offset: usize,
 }
 
-pub fn decode_event(event: &EventFilter, log: &Log) -> Result<Vec<Parameter>, String> {
+pub fn decode_event(event: &EventFilter, log: &Log) -> Result<Vec<Parameter>, DecodeError> {
     let mut parameters: Vec<Parameter> = Vec::new();
     let data = log.data();
     let mut offset = 0;
@@ -59,7 +56,7 @@ pub fn decode_param(
     data: &Bytes,
     param_type: &ParamType,
     offset: usize,
-) -> Result<DecodeResult, String> {
+) -> Result<DecodeResult, DecodeError> {
     match param_type {
         ParamType::Address => {
             let slice = peek_32_bytes(data, offset)?;
@@ -73,7 +70,7 @@ pub fn decode_param(
         ParamType::UInt(_) => {
             let slice = peek_32_bytes(data, offset)?;
             let value = Signed::<256, 4>::try_from_be_slice(slice.as_slice())
-                .expect("Data is not a valid signed integer");
+                .ok_or(DecodeError::InvalidSignedInteger)?;
             let result = DecodeResult {
                 parameter: Parameter::Uint(value.as_usize()),
                 new_offset: offset + 32,
@@ -83,7 +80,7 @@ pub fn decode_param(
         ParamType::Int(_) => {
             let slice = peek_32_bytes(data, offset)?;
             let value = Signed::<256, 4>::try_from_be_slice(slice.as_slice())
-                .expect("Data is not a valid signed integer");
+                .ok_or(DecodeError::InvalidSignedInteger)?;
             let result = DecodeResult {
                 parameter: Parameter::Int(value.as_isize()),
                 new_offset: offset + 32,
@@ -104,7 +101,7 @@ pub fn decode_param(
             let len = as_usize(&peek_32_bytes(data, dynamic_offset)?)?;
             let bytes = take_bytes(data, dynamic_offset + 32, len)?;
             let result = DecodeResult {
-                parameter: Parameter::String(String::from_utf8_lossy(&bytes).into()),
+                parameter: Parameter::String(String::from_utf8(bytes)?),
                 new_offset: offset + 32,
             };
             Ok(result)
@@ -137,7 +134,7 @@ pub fn decode_param(
             let mut parameters = vec![];
             parameters
                 .try_reserve_exact(len)
-                .map_err(|_| String::from("Out of memory"))?;
+                .map_err(|_| DecodeError::MemoryAllocationError)?;
             let mut new_offset = 0;
 
             for _ in 0..len {
@@ -173,15 +170,15 @@ pub fn decode_param(
     }
 }
 
-fn peek(data: &[u8], offset: usize, len: usize) -> Result<&[u8], String> {
+fn peek(data: &[u8], offset: usize, len: usize) -> Result<&[u8], DecodeError> {
     if offset + len > data.len() {
-        Err("Out of bounds".into())
+        Err(DecodeError::OutOfBounds)
     } else {
         Ok(&data[offset..(offset + len)])
     }
 }
 
-fn peek_32_bytes(data: &[u8], offset: usize) -> Result<[u8; 32], String> {
+fn peek_32_bytes(data: &[u8], offset: usize) -> Result<[u8; 32], DecodeError> {
     peek(data, offset, 32).map(|x| {
         let mut out = [0u8; 32];
         out.copy_from_slice(&x[0..32]);
@@ -189,9 +186,9 @@ fn peek_32_bytes(data: &[u8], offset: usize) -> Result<[u8; 32], String> {
     })
 }
 
-fn as_usize(slice: &[u8; 32]) -> Result<usize, String> {
+fn as_usize(slice: &[u8; 32]) -> Result<usize, DecodeError> {
     if !slice[..28].iter().all(|x| *x == 0) {
-        return Err("Data is not a valid unsigned integer".into());
+        return Err(DecodeError::InvalidUnsignedInteger);
     }
 
     let result = ((slice[28] as usize) << 24)
@@ -202,9 +199,9 @@ fn as_usize(slice: &[u8; 32]) -> Result<usize, String> {
     Ok(result)
 }
 
-fn take_bytes(data: &[u8], offset: usize, len: usize) -> Result<Vec<u8>, String> {
+fn take_bytes(data: &[u8], offset: usize, len: usize) -> Result<Vec<u8>, DecodeError> {
     if offset + len > data.len() {
-        return Err("Out of bounds".into());
+        return Err(DecodeError::OutOfBounds);
     }
     Ok(data[offset..(offset + len)].to_vec())
 }
@@ -225,7 +222,7 @@ mod tests {
         let param_type = ParamType::Address;
         let offset = 0;
 
-        let result = decode_param(&data, &param_type, offset).expect("Decodificación fallida");
+        let result = decode_param(&data, &param_type, offset).expect("Decoding failed");
         if let Parameter::Address(addr) = result.parameter {
             assert_eq!(
                 addr,
@@ -244,7 +241,7 @@ mod tests {
         let param_type = ParamType::UInt(256);
         let offset = 0;
 
-        let result = decode_param(&data, &param_type, offset).expect("Decodificación fallida");
+        let result = decode_param(&data, &param_type, offset).expect("Decoding failed");
         if let Parameter::Uint(value) = result.parameter {
             assert_eq!(value, 42);
         } else {
@@ -260,7 +257,7 @@ mod tests {
         let param_type = ParamType::Int(256);
         let offset = 0;
 
-        let result = decode_param(&data, &param_type, offset).expect("Decodificación fallida");
+        let result = decode_param(&data, &param_type, offset).expect("Decoding failed");
         if let Parameter::Int(value) = result.parameter {
             assert_eq!(value, -42);
         } else {
@@ -276,7 +273,7 @@ mod tests {
         let param_type = ParamType::Bool;
         let offset = 0;
 
-        let result = decode_param(&data, &param_type, offset).expect("Decodificación fallida");
+        let result = decode_param(&data, &param_type, offset).expect("Decoding failed");
         if let Parameter::Bool(value) = result.parameter {
             assert!(value);
         } else {
