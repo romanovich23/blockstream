@@ -1,5 +1,5 @@
 pub mod configuration;
 pub mod connection;
-pub mod decode;
+pub mod decoder;
 pub mod subscription;
 pub mod transaction;

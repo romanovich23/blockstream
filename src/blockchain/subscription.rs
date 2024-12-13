@@ -34,14 +34,14 @@ where
         }
         Err(_err) => {
             info!("Using HTTP provider, switching to watch_blocks instead.");
-            watch_blocks(provider, action).await?;
+            try_block_watching(provider, action).await?;
         }
     }
 
     Ok(())
 }
 
-async fn watch_blocks<T, Fut>(
+async fn try_block_watching<T, Fut>(
     provider: &RootProvider<BoxTransport>,
     action: T,
 ) -> Result<(), SubscriptionError>

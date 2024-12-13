@@ -1,10 +1,10 @@
+use blockstream::blockchain::decoder::{Decoder, EthereumDecoder};
 use blockstream::{
     blockchain::{
-        connection, decode::decode_event, subscription::subscribe_to_blocks,
-        transaction::process_transaction_logs,
+        connection, subscription::subscribe_to_blocks, transaction::process_transaction_logs,
     },
     configuration::load_config,
-    logger::initialize_logger,
+    utils::logger::initialize_logger,
 };
 use log::{error, info};
 
@@ -35,7 +35,9 @@ async fn main() {
                     block,
                     &config.subscriptions,
                     |event_filter, log| async move {
-                        match decode_event(&event_filter, &log) {
+                        match EthereumDecoder::new()
+                            .decode(&event_filter.data_types, &log.data().data)
+                        {
                             Ok(parameters) => {
                                 info!("Event data output: {:?}", parameters);
                             }
