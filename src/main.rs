@@ -35,8 +35,7 @@ async fn main() {
                     block,
                     &config.subscriptions,
                     |event_filter, log| async move {
-                        match EthereumDecoder::new()
-                            .decode(&event_filter.data_types, &log.data().data)
+                        match EthereumDecoder::new(event_filter.data_types).decode(&log.data().data)
                         {
                             Ok(parameters) => {
                                 info!("Event data output: {:?}", parameters);

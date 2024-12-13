@@ -36,11 +36,7 @@ pub struct DecodeResult {
 }
 
 pub trait Decoder {
-    fn decode(
-        &self,
-        param_types: &Vec<ParamType>,
-        data: &Bytes,
-    ) -> Result<Vec<Parameter>, DecodeError>;
+    fn decode(&self, data: &Bytes) -> Result<Vec<Parameter>, DecodeError>;
     fn decode_parameter(
         &self,
         param_type: &ParamType,
@@ -49,11 +45,19 @@ pub trait Decoder {
     ) -> Result<DecodeResult, DecodeError>;
 }
 
-pub struct EthereumDecoder;
+pub struct EthereumDecoder {
+    pub param_types: Vec<ParamType>,
+}
 
 impl EthereumDecoder {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(param_types: Vec<ParamType>) -> Self {
+        Self { param_types }
+    }
+
+    pub fn default() -> Self {
+        Self {
+            param_types: Vec::new(),
+        }
     }
 
     fn decode_address(&self, data: &Bytes, offset: usize) -> Result<DecodeResult, DecodeError> {
@@ -191,14 +195,10 @@ impl EthereumDecoder {
 }
 
 impl Decoder for EthereumDecoder {
-    fn decode(
-        &self,
-        param_types: &Vec<ParamType>,
-        data: &Bytes,
-    ) -> Result<Vec<Parameter>, DecodeError> {
+    fn decode(&self, data: &Bytes) -> Result<Vec<Parameter>, DecodeError> {
         let mut parameters: Vec<Parameter> = Vec::new();
         let mut offset = 0;
-        for param_type in param_types {
+        for param_type in &self.param_types {
             let result = self.decode_parameter(param_type, &data, offset)?;
             parameters.push(result.parameter);
             offset = result.new_offset;
@@ -278,7 +278,7 @@ mod tests {
         let param_type = ParamType::Address;
         let offset = 0;
 
-        let result = EthereumDecoder::new()
+        let result = EthereumDecoder::default()
             .decode_parameter(&param_type, &data, offset)
             .expect("Decoding failed");
         if let Parameter::Address(addr) = result.parameter {
@@ -299,7 +299,7 @@ mod tests {
         let param_type = ParamType::UInt(256);
         let offset = 0;
 
-        let result = EthereumDecoder::new()
+        let result = EthereumDecoder::default()
             .decode_parameter(&param_type, &data, offset)
             .expect("Decoding failed");
         if let Parameter::Uint(value) = result.parameter {
@@ -317,7 +317,7 @@ mod tests {
         let param_type = ParamType::Int(256);
         let offset = 0;
 
-        let result = EthereumDecoder::new()
+        let result = EthereumDecoder::default()
             .decode_parameter(&param_type, &data, offset)
             .expect("Decoding failed");
         if let Parameter::Int(value) = result.parameter {
@@ -335,7 +335,7 @@ mod tests {
         let param_type = ParamType::Bool;
         let offset = 0;
 
-        let result = EthereumDecoder::new()
+        let result = EthereumDecoder::default()
             .decode_parameter(&param_type, &data, offset)
             .expect("Decoding failed");
         if let Parameter::Bool(value) = result.parameter {
@@ -355,7 +355,7 @@ mod tests {
         let param_type = ParamType::String;
         let offset = 0;
 
-        let result = EthereumDecoder::new()
+        let result = EthereumDecoder::default()
             .decode_parameter(&param_type, &data, offset)
             .expect("Decoding failed");
         if let Parameter::String(value) = result.parameter {
@@ -375,7 +375,7 @@ mod tests {
         let param_type = ParamType::Bytes;
         let offset = 0;
 
-        let result = EthereumDecoder::new()
+        let result = EthereumDecoder::default()
             .decode_parameter(&param_type, &data, offset)
             .expect("Decoding failed");
         if let Parameter::Bytes(value) = result.parameter {
@@ -393,7 +393,7 @@ mod tests {
         let param_type = ParamType::FixedBytes(4);
         let offset = 0;
 
-        let result = EthereumDecoder::new()
+        let result = EthereumDecoder::default()
             .decode_parameter(&param_type, &data, offset)
             .expect("Decoding failed");
         if let Parameter::FixedBytes(value) = result.parameter {
@@ -415,7 +415,7 @@ mod tests {
         let param_type = ParamType::Array(Box::new(ParamType::UInt(256)));
         let offset = 0;
 
-        let result = EthereumDecoder::new()
+        let result = EthereumDecoder::default()
             .decode_parameter(&param_type, &data, offset)
             .expect("Decoding failed");
         if let Parameter::Array(values) = result.parameter {
@@ -435,7 +435,7 @@ mod tests {
         let param_type = ParamType::Struct(vec![ParamType::UInt(256), ParamType::Bool]);
         let offset = 0;
 
-        let result = EthereumDecoder::new()
+        let result = EthereumDecoder::default()
             .decode_parameter(&param_type, &data, offset)
             .expect("Decoding failed");
         if let Parameter::Struct(values) = result.parameter {
