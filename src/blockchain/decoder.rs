@@ -199,7 +199,7 @@ impl Decoder for EthereumDecoder {
         let mut parameters: Vec<Parameter> = Vec::new();
         let mut offset = 0;
         for param_type in &self.param_types {
-            let result = self.decode_parameter(param_type, &data, offset)?;
+            let result = self.decode_parameter(param_type, data, offset)?;
             parameters.push(result.parameter);
             offset = result.new_offset;
         }

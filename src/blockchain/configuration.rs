@@ -97,7 +97,7 @@ impl Network {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EventSubscription {
     pub contract_address: Address,
     pub events: Vec<EventFilter>,
